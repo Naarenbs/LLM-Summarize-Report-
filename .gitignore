@@ -1,0 +1,15 @@
+# Python junk
+__pycache__/
+*.pyc
+
+# Virtual Environment
+venv/
+.venv/
+.env
+
+# Project Data (Don't upload heavy DBs or local data)
+data/
+vector_db/
+
+# Mac system files
+.DS_Store
