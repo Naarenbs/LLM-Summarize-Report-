@@ -8,3 +8,5 @@ sentence-transformers>=3.0.0
 pypdf>=5.0.0
 tf-keras
 streamlit
+accelerate
+transformers

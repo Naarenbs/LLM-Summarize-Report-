@@ -4,7 +4,7 @@ import shutil
 import atexit
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
-from rag_pipeline import get_retriever, ingest_file
+from rag_pipeline import get_retriever, ingest_file, reset_database
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -95,6 +95,15 @@ with st.sidebar:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Ingest Error: {e}")
+
+    st.markdown("---")
+    if st.button("⚠️ Reset App"):
+        with st.spinner("Clearing Data..."):
+            reset_database()
+            st.session_state.messages = []
+            st.session_state.retriever = None
+            st.success("Data Cleared!")
+            st.rerun()
 
 # --- MAIN CHAT ---
 st.title("🤖 Agentic RAG Assistant")
