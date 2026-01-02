@@ -2,9 +2,18 @@ import streamlit as st
 import os
 import shutil
 import atexit
+import sys
+import logging
+
+# Suppress TF warnings if using legacy keras
+os.environ['TF_USE_LEGACY_KERAS'] = '1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 from rag_pipeline import get_retriever, ingest_file, reset_database
+from agent_actions import summarize_action, report_action, categorize_action
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -132,13 +141,25 @@ if prompt := st.chat_input("Ask about the document..."):
             status = st.status("🧠 Thinking...", expanded=True)
             
             # Router
-            router_prompt = ChatPromptTemplate.from_template("Classify as SUMMARIZE, REPORT, CATEGORIZE, or QA. Query: {query}")
+            router_prompt = ChatPromptTemplate.from_template(
+                "Classify the user query into exactly one of these: SUMMARIZE, REPORT, CATEGORIZE, or QA.\n"
+                "Reply ONLY with the word.\n\n"
+                "Query: {query}"
+            )
             chain = router_prompt | st.session_state.llm
             category = chain.invoke({"query": prompt}).strip().upper()
             
+            # Clean up category string
+            valid_categories = ["SUMMARIZE", "REPORT", "CATEGORIZE", "QA"]
+            found_category = "QA" # Default fallback
+            for cat in valid_categories:
+                if cat in category:
+                    found_category = cat
+                    break
+            
             # Search
             search_query = prompt
-            if "SUMMARIZE" in category:
+            if found_category == "SUMMARIZE":
                 search_query += " abstract introduction conclusion"
             
             docs = st.session_state.retriever.invoke(search_query)
@@ -148,8 +169,22 @@ if prompt := st.chat_input("Ask about the document..."):
                 st.error("No relevant text found.")
             else:
                 context = "\n\n".join([d.page_content for d in docs])
-                qa_prompt = f"Context: {context}\n\nTask: {category}\nQuery: {prompt}\n\nResponse:"
-                result = st.session_state.llm.invoke(qa_prompt)
+                
+                # Execution
+                if found_category == "SUMMARIZE":
+                    result = summarize_action(st.session_state.llm, context)
+                elif found_category == "REPORT":
+                    result = report_action(st.session_state.llm, context)
+                elif found_category == "CATEGORIZE":
+                    result = categorize_action(st.session_state.llm, context)
+                else: # QA
+                    qa_prompt = ChatPromptTemplate.from_template(
+                        "Answer the user query based ONLY on the following context:\n\n"
+                        "{context}\n\n"
+                        "Question: {query}"
+                    )
+                    qa_chain = qa_prompt | st.session_state.llm
+                    result = qa_chain.invoke({"context": context, "query": prompt})
                 
                 status.update(label="✅ Answered", state="complete", expanded=False)
                 st.markdown(result)
